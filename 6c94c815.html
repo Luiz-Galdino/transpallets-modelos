@@ -54,6 +54,17 @@ body.cliente .sidebar,body.cliente .cota-box,body.cliente .hint{display:none !im
 body.cliente header{padding:4px 12px;gap:8px}
 body.cliente header img{height:24px !important}
 body.cliente header h1{font-size:15px;padding-left:8px}
+.cx-painel{position:absolute;bottom:10px;left:10px;width:256px;max-width:calc(100% - 20px);background:rgba(255,255,255,.96);border:1px solid #c9d1da;border-radius:8px;padding:10px 12px;font-family:'Inter',Arial,sans-serif;font-size:12px;color:#1f2a37;z-index:5}
+.cx-t{font-weight:600;color:#191963;font-size:13px;margin-bottom:6px}
+.cx-linha{display:flex;gap:6px;margin-bottom:6px}
+.cx-linha label{flex:1;display:flex;flex-direction:column;font-size:10px;color:#5b6573;gap:2px}
+.cx-linha input{width:100%;padding:4px 5px;border:1px solid #c5cae9;border-radius:5px;font-size:12px}
+.cx-painel select{width:100%;padding:4px 5px;border:1px solid #c5cae9;border-radius:5px;font-size:11px;margin-bottom:6px}
+.cx-alt{display:flex;align-items:center;gap:6px;font-size:11px;color:#3a4454;margin-bottom:8px}
+.cx-btns{display:flex;gap:6px;margin-bottom:6px}
+.cx-btns button{flex:1;padding:5px;border-radius:6px;border:none;background:#191963;color:#fff;font-size:12px;cursor:pointer}
+.cx-btns .cx-sec{background:#e8eaf6;color:#191963}
+#cx-res{white-space:pre-line;font-size:11px;line-height:1.45;min-height:0}
 .leg{display:flex;flex-wrap:wrap;gap:5px;padding:5px 12px;background:white;border-top:1px solid #e8eaf6;flex-shrink:0}
 .li{display:flex;align-items:center;gap:3px;font-size:10px;color:#555}
 .ld{width:10px;height:10px;border-radius:2px;flex-shrink:0}
@@ -399,6 +410,21 @@ input[list]:focus,input[list]:hover{border-color:#3949AB;background:white}
     </div>
   </div>
   <div class="cli-tit" id="cli-titulo"></div>
+  <div class="cx-painel" id="cx-painel">
+    <div class="cx-t">Simular caixa de papelão</div>
+    <div class="cx-linha">
+      <label>Comp.<input id="cx-c" type="number" min="1" step="0.5" placeholder="cm"></label>
+      <label>Larg.<input id="cx-l" type="number" min="1" step="0.5" placeholder="cm"></label>
+      <label>Alt.<input id="cx-a" type="number" min="1" step="0.5" placeholder="cm"></label>
+    </div>
+    <select id="cx-sent">
+      <option value="liga">Comprimento no sentido do liga-toco</option>
+      <option value="trans">Comprimento transversal ao liga-toco</option>
+    </select>
+    <label class="cx-alt"><input type="checkbox" id="cx-alt"> Alternar o sentido a cada camada</label>
+    <div class="cx-btns"><button onclick="simularCaixas()">Simular</button><button class="cx-sec" onclick="limparCaixas()">Limpar</button></div>
+    <div id="cx-res"></div>
+  </div>
   <div class="overlay">
     <button class="reset-btn" id="vb-sup" onclick="setVista('sup')">Superior</button>
     <button class="reset-btn" id="vb-inf" onclick="setVista('inf')">Inferior</button>
@@ -1010,6 +1036,78 @@ function addDims(pX,pZ){
   scene.add(dimG);
 }
 
+// ===== Simulação de caixas de papelão sobre a base =====
+// Caixa aberta (bandeja) em papelão, sem desenhos. Comprimento = lado maior.
+// Sentido padrão: comprimento da caixa no sentido do liga-toco (eixo Z).
+window.caixaSim=null; window.caixaRes=null;
+var CX_KRAFT=0xc39a63, CX_NCAMADAS=6;
+function caixaBandeja(W,H,D,t,x,y,z){
+  var g=new THREE.Group();
+  var mat=new THREE.MeshLambertMaterial({color:CX_KRAFT});
+  var pc=function(w,h,d,px,py,pz){var m=new THREE.Mesh(new THREE.BoxGeometry(w,h,d),mat);m.position.set(px,py,pz);return m;};
+  g.add(pc(W,t,D,0,t/2,0));
+  g.add(pc(t,H,D,-W/2+t/2,H/2,0));
+  g.add(pc(t,H,D,W/2-t/2,H/2,0));
+  g.add(pc(W,H,t,0,H/2,-D/2+t/2));
+  g.add(pc(W,H,t,0,H/2,D/2-t/2));
+  g.position.set(x,y,z);
+  return g;
+}
+function _caixaOrient(){
+  var S=window.caixaSim, c=S.c/100, l=S.l/100;
+  var lo=Math.max(c,l), sh=Math.min(c,l);
+  var prim=(S.sent==="liga")?{sx:sh,sz:lo}:{sx:lo,sz:sh};
+  return {prim:prim, sec:{sx:prim.sz,sz:prim.sx}};
+}
+function _caixaCabe(o,dX,dZ){var E=1e-9;return Math.floor(dX/o.sx+E)>=1&&Math.floor(dZ/o.sz+E)>=1;}
+function addCaixas(yB,x0,x1,z0,z1){
+  var S=window.caixaSim; if(!S)return;
+  var O=_caixaOrient(), a=S.a/100, dX=x1-x0, dZ=z1-z0, E=1e-9;
+  var t=Math.min(0.012,Math.min(S.c,S.l)/100/4);
+  var cabe=_caixaCabe(O.prim,dX,dZ)&&(!S.alt||_caixaCabe(O.sec,dX,dZ));
+  if(!cabe){window.caixaRes={erro:"A caixa não cabe na base deste pallet. Verifique as dimensões e o sentido."};return;}
+  var layers=[],total=0,aprovs=[],sobra=null;
+  for(var k=0;k<CX_NCAMADAS;k++){
+    var o=(S.alt&&k%2===1)?O.sec:O.prim;
+    var nx=Math.floor(dX/o.sx+E), nz=Math.floor(dZ/o.sz+E);
+    for(var i=0;i<nx;i++)for(var j=0;j<nz;j++){
+      grp.add(caixaBandeja(o.sx,a,o.sz,t,x0+(i+0.5)*o.sx,yB+k*a,z0+(j+0.5)*o.sz));
+    }
+    layers.push(nx*nz); total+=nx*nz;
+    aprovs.push(nx*nz*o.sx*o.sz/(dX*dZ));
+    if(!sobra)sobra=[dX-nx*o.sx,dZ-nz*o.sz,nx,nz];
+  }
+  window.caixaRes={erro:null,layers:layers,total:total,aprovs:aprovs,sobra:sobra,altTotal:yB+CX_NCAMADAS*a};
+}
+function _mostrarCaixaRes(){
+  var el=document.getElementById("cx-res"); if(!el)return;
+  var R=window.caixaRes, S=window.caixaSim;
+  if(!R){el.textContent="";el.style.color="";return;}
+  if(R.erro){el.style.color="#B3261E";el.textContent=R.erro;return;}
+  var pct=function(v){return (Math.round(v*1000)/10).toString().replace(".",",")+"%";};
+  var cm=function(v){return (Math.round(v*1000)/10).toString().replace(".",",");};
+  var aMin=Math.min.apply(null,R.aprovs), aMax=Math.max.apply(null,R.aprovs);
+  el.style.color="#1f2a37";
+  el.textContent=
+    "Caixas por camada: "+(S.alt?R.layers.join(" · "):R.layers[0]+" ("+R.sobra[2]+" × "+R.sobra[3]+")")+"\n"+
+    "Total: "+R.total+" caixas em "+CX_NCAMADAS+" camadas\n"+
+    "Aproveitamento da base: "+(aMin===aMax?pct(aMin):pct(aMin)+" a "+pct(aMax))+"\n"+
+    "Sobra na 1ª camada: "+cm(R.sobra[0])+" cm no sentido da régua superior, "+cm(R.sobra[1])+" cm no sentido do liga-toco\n"+
+    "Altura do conjunto: "+cm(R.altTotal)+" cm";
+}
+function simularCaixas(){
+  var g=function(id){return parseFloat(document.getElementById(id).value);};
+  var c=g("cx-c"), l=g("cx-l"), a=g("cx-a");
+  if(!(c>0&&l>0&&a>0)){window.caixaSim=null;window.caixaRes={erro:"Informe comprimento, largura e altura da caixa, em cm."};_mostrarCaixaRes();return;}
+  if(!window.lastP){window.caixaRes={erro:"Monte um pallet antes de simular."};_mostrarCaixaRes();return;}
+  window.caixaSim={c:c,l:l,a:a,sent:document.getElementById("cx-sent").value,alt:document.getElementById("cx-alt").checked};
+  buildPallet(window.lastP);
+}
+function limparCaixas(){
+  window.caixaSim=null; window.caixaRes=null;
+  if(window.lastP)buildPallet(window.lastP); else _mostrarCaixaRes();
+}
+
 function buildPallet(p){
   window.lastP=p;
   if(grp)scene.remove(grp);
@@ -1109,9 +1207,11 @@ function buildPallet(p){
   var xA=new THREE.Vector3(0,0,-pZ/2).applyEuler(new THREE.Euler(DEFAULT_RX,DEFAULT_RY,0)).project(defCam).x;
   var xB=new THREE.Vector3(0,0,pZ/2).applyEuler(new THREE.Euler(DEFAULT_RX,DEFAULT_RY,0)).project(defCam).x;
   var leftNeg=xA<xB;
+  var railZ=[];
   for(var k=0;k<rsN;k++){
     var zz=leftNeg?(-pZ/2+sArr[k]):(pZ/2-sArr[k]);
     grp.add(bx(p.rsC,p.rsE,wArr[k],C.rs,0,y+p.rsE/2,zz));
+    railZ.push([zz-wArr[k]/2,zz+wArr[k]/2]);
   }
   var rsTopE=p.rsE;
 
@@ -1155,12 +1255,20 @@ function buildPallet(p){
   }
 
   var tH=y+rsTopE;
+  // Caixas de papelão (simulação): sobre as réguas superiores, com a 1ª caixa encostada na 1ª régua
+  window.caixaRes=null;
+  if(window.caixaSim&&railZ.length){
+    var zMinR=Math.min.apply(null,railZ.map(function(r){return r[0];}));
+    var zMaxR=Math.max.apply(null,railZ.map(function(r){return r[1];}));
+    addCaixas(yTop,-pX/2,pX/2,zMinR,zMaxR);
+  }
   grp.position.y=-tH/2;
   grp.rotation.x=DEFAULT_RX; grp.rotation.y=DEFAULT_RY;
   scene.add(grp);
   addDims(pX,pZ);
   if(dimG){dimG.visible=cO.geral!==false;}
   setVista(vistaAtual,true);
+  _mostrarCaixaRes();
 }
 
 var modelEmEdicao=null;
