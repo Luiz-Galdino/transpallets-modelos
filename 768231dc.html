@@ -422,6 +422,10 @@ input[list]:focus,input[list]:hover{border-color:#3949AB;background:white}
       <label>Larg.<input id="cx-l" type="number" min="1" step="0.5" placeholder="cm"></label>
       <label>Alt.<input id="cx-a" type="number" min="1" step="0.5" placeholder="cm"></label>
     </div>
+    <select id="cx-fruta">
+      <option value="uva" selected>Fruta: uvas</option>
+      <option value="">Sem fruta</option>
+    </select>
     <select id="cx-sent">
       <option value="liga">Comprimento no sentido do liga-toco</option>
       <option value="trans">Comprimento transversal ao liga-toco</option>
@@ -1064,6 +1068,27 @@ function _caixaOrient(){
   var prim=(S.sent==="liga")?{sx:sh,sz:lo}:{sx:lo,sz:sh};
   return {prim:prim, sec:{sx:prim.sz,sz:prim.sx}};
 }
+// Frutas: só a camada superior de caixas recebe frutas (é a única visível de cima).
+// Instâncias de uma única geometria, para manter a renderização leve.
+var CX_FRUTAS={uva:{nome:"uvas",d:0.022,cor:0x5e2c7e,camadas:3}};
+function _frutasAdd(F,FR){
+  var d=F.d, pos=[];
+  FR.forEach(function(b){
+    var nx=Math.floor(b.w/d+1e-9), nz=Math.floor(b.d/d+1e-9), nl=Math.min(F.camadas,Math.floor(b.h/d+1e-9));
+    if(nx<1||nz<1||nl<1)return;
+    var sx=b.w/nx, sz=b.d/nz;
+    for(var l=0;l<nl;l++)for(var i=0;i<nx;i++)for(var j=0;j<nz;j++){
+      pos.push([b.x0+(i+0.5)*sx, b.y0+b.h-(l+0.5)*d, b.z0+(j+0.5)*sz]);
+    }
+  });
+  if(!pos.length)return 0;
+  var im=new THREE.InstancedMesh(new THREE.SphereGeometry(d/2,6,4),new THREE.MeshLambertMaterial({color:F.cor}),pos.length);
+  var m4=new THREE.Matrix4();
+  pos.forEach(function(p,n){m4.makeTranslation(p[0],p[1],p[2]);im.setMatrixAt(n,m4);});
+  im.instanceMatrix.needsUpdate=true;
+  grp.add(im);
+  return pos.length;
+}
 function _caixaCabe(o,dX,dZ){var E=1e-9;return Math.floor(dX/o.sx+E)>=1&&Math.floor(dZ/o.sz+E)>=1;}
 function addCaixas(yB,x0,x1,z0,z1){
   var S=window.caixaSim; if(!S)return;
@@ -1071,18 +1096,22 @@ function addCaixas(yB,x0,x1,z0,z1){
   var t=Math.min(0.012,Math.min(S.c,S.l)/100/4);
   var cabe=_caixaCabe(O.prim,dX,dZ)&&(!S.alt||_caixaCabe(O.sec,dX,dZ));
   if(!cabe){window.caixaRes={erro:"A caixa não cabe na base deste pallet. Verifique as dimensões e o sentido."};return;}
+  var F=S.fruta?CX_FRUTAS[S.fruta]:null, FR=[];
   var layers=[],total=0,aprovs=[],sobra=null;
   for(var k=0;k<CX_NCAMADAS;k++){
     var o=(S.alt&&k%2===1)?O.sec:O.prim;
     var nx=Math.floor(dX/o.sx+E), nz=Math.floor(dZ/o.sz+E);
     for(var i=0;i<nx;i++)for(var j=0;j<nz;j++){
-      grp.add(caixaBandeja(o.sx,a,o.sz,t,x0+(i+0.5)*o.sx,yB+k*a,z0+(j+0.5)*o.sz));
+      var bx0=x0+i*o.sx, bz0=z0+j*o.sz;
+      grp.add(caixaBandeja(o.sx,a,o.sz,t,bx0+o.sx/2,yB+k*a,bz0+o.sz/2));
+      if(F&&k===CX_NCAMADAS-1)FR.push({x0:bx0+t,z0:bz0+t,w:o.sx-2*t,d:o.sz-2*t,y0:yB+k*a+t,h:a-t});
     }
     layers.push(nx*nz); total+=nx*nz;
     aprovs.push(nx*nz*o.sx*o.sz/(dX*dZ));
     if(!sobra)sobra=[dX-nx*o.sx,dZ-nz*o.sz,nx,nz];
   }
-  window.caixaRes={erro:null,layers:layers,total:total,aprovs:aprovs,sobra:sobra,altTotal:yB+CX_NCAMADAS*a};
+  var nFrutas=F?_frutasAdd(F,FR):0;
+  window.caixaRes={erro:null,layers:layers,total:total,aprovs:aprovs,sobra:sobra,altTotal:yB+CX_NCAMADAS*a,frutas:nFrutas,frutaNome:F?F.nome:""};
 }
 function _mostrarCaixaRes(){
   var el=document.getElementById("cx-res"); if(!el)return;
@@ -1096,6 +1125,7 @@ function _mostrarCaixaRes(){
   el.textContent=
     "Caixas por camada: "+(S.alt?R.layers.join(" · "):R.layers[0]+" ("+R.sobra[2]+" × "+R.sobra[3]+")")+"\n"+
     "Total: "+R.total+" caixas em "+CX_NCAMADAS+" camadas\n"+
+    (R.frutas?"Frutas na camada superior: "+R.frutas+" "+R.frutaNome+"\n":"")+
     "Aproveitamento da base: "+(aMin===aMax?pct(aMin):pct(aMin)+" a "+pct(aMax))+"\n"+
     "Sobra na 1ª camada: "+cm(R.sobra[0])+" cm no sentido da régua superior, "+cm(R.sobra[1])+" cm no sentido do liga-toco\n"+
     "Altura do conjunto: "+cm(R.altTotal)+" cm";
@@ -1105,7 +1135,7 @@ function simularCaixas(){
   var c=g("cx-c"), l=g("cx-l"), a=g("cx-a");
   if(!(c>0&&l>0&&a>0)){window.caixaSim=null;window.caixaRes={erro:"Informe comprimento, largura e altura da caixa, em cm."};_mostrarCaixaRes();return;}
   if(!window.lastP){window.caixaRes={erro:"Monte um pallet antes de simular."};_mostrarCaixaRes();return;}
-  window.caixaSim={c:c,l:l,a:a,sent:document.getElementById("cx-sent").value,alt:document.getElementById("cx-alt").checked};
+  window.caixaSim={c:c,l:l,a:a,sent:document.getElementById("cx-sent").value,alt:document.getElementById("cx-alt").checked,fruta:document.getElementById("cx-fruta").value};
   buildPallet(window.lastP);
 }
 function limparCaixas(){
