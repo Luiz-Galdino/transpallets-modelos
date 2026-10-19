@@ -1082,6 +1082,23 @@ function _caixaOrient(){
   var prim=(S.sent==="liga")?{sx:sh,sz:lo}:{sx:lo,sz:sh};
   return {prim:prim, sec:{sx:prim.sz,sz:prim.sx}};
 }
+// Contorno externo de cada caixa: linhas finas em marrom escuro, numa única malha (leve para renderizar)
+var CX_LINHA=0x5b3a1e;
+function _caixaArestas(xa,xb,ya,yb,za,zb,out){
+  var P=[[xa,ya,za],[xb,ya,za],[xa,yb,za],[xb,yb,za],[xa,ya,zb],[xb,ya,zb],[xa,yb,zb],[xb,yb,zb]];
+  [1,2,4].forEach(function(bit){
+    for(var i=0;i<8;i++){
+      if(i&bit)continue;
+      var j=i|bit;
+      out.push(P[i][0],P[i][1],P[i][2],P[j][0],P[j][1],P[j][2]);
+    }
+  });
+}
+function _caixaLinhas(pts){
+  var geo=new THREE.BufferGeometry();
+  geo.setAttribute("position",new THREE.Float32BufferAttribute(pts,3));
+  return new THREE.LineSegments(geo,new THREE.LineBasicMaterial({color:CX_LINHA}));
+}
 // Quantas caixas cabem numa linha de comprimento d, com folga entre elas (sem folga após a última)
 function _nAlong(d,s){return Math.floor((d+CX_GAP_H)/(s+CX_GAP_H)+1e-9);}
 function _caixaCabe(o,dX,dZ){return _nAlong(dX,o.sx)>=1&&_nAlong(dZ,o.sz)>=1;}
@@ -1091,7 +1108,7 @@ function addCaixas(yB,x0,x1,z0,z1){
   var t=S.e/1000;
   var cabe=_caixaCabe(O.prim,dX,dZ)&&(!S.alt||_caixaCabe(O.sec,dX,dZ));
   if(!cabe){window.caixaRes={erro:"A caixa não cabe na base deste pallet. Verifique as dimensões e o sentido."};return;}
-  var layers=[],total=0,aprovs=[],sobra=null;
+  var layers=[],total=0,aprovs=[],sobra=null,LIN=[];
   for(var k=0;k<CX_NCAMADAS;k++){
     var o=(S.alt&&k%2===1)?O.sec:O.prim;
     var nx=_nAlong(dX,o.sx), nz=_nAlong(dZ,o.sz);
@@ -1099,11 +1116,13 @@ function addCaixas(yB,x0,x1,z0,z1){
     for(var i=0;i<nx;i++)for(var j=0;j<nz;j++){
       var bx0=x0+i*(o.sx+CX_GAP_H), bz0=z0+j*(o.sz+CX_GAP_H);
       grp.add(caixaBandeja(o.sx,a,o.sz,t,bx0+o.sx/2,yk,bz0+o.sz/2));
+      _caixaArestas(bx0,bx0+o.sx,yk,yk+a,bz0,bz0+o.sz,LIN);
     }
     layers.push(nx*nz); total+=nx*nz;
     aprovs.push(nx*nz*o.sx*o.sz/(dX*dZ));
     if(!sobra)sobra=[dX-(nx*o.sx+Math.max(0,nx-1)*CX_GAP_H),dZ-(nz*o.sz+Math.max(0,nz-1)*CX_GAP_H),nx,nz];
   }
+  if(LIN.length)grp.add(_caixaLinhas(LIN));
   window.caixaRes={erro:null,layers:layers,total:total,aprovs:aprovs,sobra:sobra,altTotal:yB+CX_NCAMADAS*a+(CX_NCAMADAS-1)*CX_GAP_V};
 }
 function _mostrarCaixaRes(){
