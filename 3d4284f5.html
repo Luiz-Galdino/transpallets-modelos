@@ -1051,15 +1051,32 @@ function addDims(pX,pZ){
 // Sentido padrão: comprimento da caixa no sentido do liga-toco (eixo Z).
 window.caixaSim=null; window.caixaRes=null;
 var CX_KRAFT=0xc39a63, CX_NCAMADAS=6;
+// Folgas: 0,5 cm entre caixas na mesma camada; 2 mm entre camadas (valores simbólicos, para leitura das divisórias)
+var CX_GAP_H=0.005, CX_GAP_V=0.002;
+// Caixa aberta em papelão, com cavidades: no meio das paredes longas (topo rebaixado)
+// e nas paredes curtas (alça central, com a parte superior da parede acima da alça).
 function caixaBandeja(W,H,D,t,x,y,z){
   var g=new THREE.Group();
   var mat=new THREE.MeshLambertMaterial({color:CX_KRAFT});
-  var pc=function(w,h,d,px,py,pz){var m=new THREE.Mesh(new THREE.BoxGeometry(w,h,d),mat);m.position.set(px,py,pz);return m;};
-  g.add(pc(W,t,D,0,t/2,0));
-  g.add(pc(t,H,D,-W/2+t/2,H/2,0));
-  g.add(pc(t,H,D,W/2-t/2,H/2,0));
-  g.add(pc(W,H,t,0,H/2,-D/2+t/2));
-  g.add(pc(W,H,t,0,H/2,D/2-t/2));
+  var pc=function(w,h,d,px,py,pz){var m=new THREE.Mesh(new THREE.BoxGeometry(w,h,d),mat);m.position.set(px,py,pz);g.add(m);return m;};
+  pc(W,t,D,0,t/2,0);
+  // paredes longas (ao longo de X): recorte central no topo
+  var rW=W*0.4, rH=H*0.25;
+  [-1,1].forEach(function(s){
+    var zc=s*(D/2-t/2);
+    pc((W-rW)/2,H,t,-(W+rW)/4,H/2,zc);
+    pc((W-rW)/2,H,t, (W+rW)/4,H/2,zc);
+    pc(rW,H-rH,t,0,(H-rH)/2,zc);
+  });
+  // paredes curtas (ao longo de Z): alça central
+  var hw=D*0.36, hh=H*0.32, hc=H*0.62, yLo=hc-hh/2, yHi=hc+hh/2;
+  [-1,1].forEach(function(s){
+    var xc=s*(W/2-t/2);
+    pc(t,H,(D-hw)/2,xc,H/2,-(D+hw)/4);
+    pc(t,H,(D-hw)/2,xc,H/2, (D+hw)/4);
+    pc(t,yLo,hw,xc,yLo/2,0);
+    pc(t,H-yHi,hw,xc,(yHi+H)/2,0);
+  });
   g.position.set(x,y,z);
   return g;
 }
@@ -1090,7 +1107,9 @@ function _frutasAdd(F,FR){
   grp.add(im);
   return pos.length;
 }
-function _caixaCabe(o,dX,dZ){var E=1e-9;return Math.floor(dX/o.sx+E)>=1&&Math.floor(dZ/o.sz+E)>=1;}
+// Quantas caixas cabem numa linha de comprimento d, com folga entre elas (sem folga após a última)
+function _nAlong(d,s){return Math.floor((d+CX_GAP_H)/(s+CX_GAP_H)+1e-9);}
+function _caixaCabe(o,dX,dZ){return _nAlong(dX,o.sx)>=1&&_nAlong(dZ,o.sz)>=1;}
 function addCaixas(yB,x0,x1,z0,z1){
   var S=window.caixaSim; if(!S)return;
   var O=_caixaOrient(), a=S.a/100, dX=x1-x0, dZ=z1-z0, E=1e-9;
@@ -1101,18 +1120,19 @@ function addCaixas(yB,x0,x1,z0,z1){
   var layers=[],total=0,aprovs=[],sobra=null;
   for(var k=0;k<CX_NCAMADAS;k++){
     var o=(S.alt&&k%2===1)?O.sec:O.prim;
-    var nx=Math.floor(dX/o.sx+E), nz=Math.floor(dZ/o.sz+E);
+    var nx=_nAlong(dX,o.sx), nz=_nAlong(dZ,o.sz);
+    var yk=yB+k*(a+CX_GAP_V);
     for(var i=0;i<nx;i++)for(var j=0;j<nz;j++){
-      var bx0=x0+i*o.sx, bz0=z0+j*o.sz;
-      grp.add(caixaBandeja(o.sx,a,o.sz,t,bx0+o.sx/2,yB+k*a,bz0+o.sz/2));
-      if(F&&k===CX_NCAMADAS-1)FR.push({x0:bx0+t,z0:bz0+t,w:o.sx-2*t,d:o.sz-2*t,y0:yB+k*a+t,h:a-t});
+      var bx0=x0+i*(o.sx+CX_GAP_H), bz0=z0+j*(o.sz+CX_GAP_H);
+      grp.add(caixaBandeja(o.sx,a,o.sz,t,bx0+o.sx/2,yk,bz0+o.sz/2));
+      if(F&&k===CX_NCAMADAS-1)FR.push({x0:bx0+t,z0:bz0+t,w:o.sx-2*t,d:o.sz-2*t,y0:yk+t,h:a-t});
     }
     layers.push(nx*nz); total+=nx*nz;
     aprovs.push(nx*nz*o.sx*o.sz/(dX*dZ));
-    if(!sobra)sobra=[dX-nx*o.sx,dZ-nz*o.sz,nx,nz];
+    if(!sobra)sobra=[dX-(nx*o.sx+Math.max(0,nx-1)*CX_GAP_H),dZ-(nz*o.sz+Math.max(0,nz-1)*CX_GAP_H),nx,nz];
   }
   var nFrutas=F?_frutasAdd(F,FR):0;
-  window.caixaRes={erro:null,layers:layers,total:total,aprovs:aprovs,sobra:sobra,altTotal:yB+CX_NCAMADAS*a,frutas:nFrutas,frutaNome:F?F.nome:""};
+  window.caixaRes={erro:null,layers:layers,total:total,aprovs:aprovs,sobra:sobra,altTotal:yB+CX_NCAMADAS*a+(CX_NCAMADAS-1)*CX_GAP_V,frutas:nFrutas,frutaNome:F?F.nome:""};
 }
 function _mostrarCaixaRes(){
   var el=document.getElementById("cx-res"); if(!el)return;
