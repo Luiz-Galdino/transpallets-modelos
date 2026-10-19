@@ -421,6 +421,7 @@ input[list]:focus,input[list]:hover{border-color:#3949AB;background:white}
       <label>Comp.<input id="cx-c" type="number" min="1" step="0.5" placeholder="cm"></label>
       <label>Larg.<input id="cx-l" type="number" min="1" step="0.5" placeholder="cm"></label>
       <label>Alt.<input id="cx-a" type="number" min="1" step="0.5" placeholder="cm"></label>
+      <label>Esp.<input id="cx-e" type="number" min="0.5" step="0.5" value="3" placeholder="mm"></label>
     </div>
     <select id="cx-fruta">
       <option value="uva" selected>Fruta: uvas</option>
@@ -1093,7 +1094,7 @@ function _caixaCabe(o,dX,dZ){var E=1e-9;return Math.floor(dX/o.sx+E)>=1&&Math.fl
 function addCaixas(yB,x0,x1,z0,z1){
   var S=window.caixaSim; if(!S)return;
   var O=_caixaOrient(), a=S.a/100, dX=x1-x0, dZ=z1-z0, E=1e-9;
-  var t=Math.min(0.012,Math.min(S.c,S.l)/100/4);
+  var t=S.e/1000;
   var cabe=_caixaCabe(O.prim,dX,dZ)&&(!S.alt||_caixaCabe(O.sec,dX,dZ));
   if(!cabe){window.caixaRes={erro:"A caixa não cabe na base deste pallet. Verifique as dimensões e o sentido."};return;}
   var F=S.fruta?CX_FRUTAS[S.fruta]:null, FR=[];
@@ -1132,10 +1133,12 @@ function _mostrarCaixaRes(){
 }
 function simularCaixas(){
   var g=function(id){return parseFloat(document.getElementById(id).value);};
-  var c=g("cx-c"), l=g("cx-l"), a=g("cx-a");
+  var c=g("cx-c"), l=g("cx-l"), a=g("cx-a"), e=g("cx-e");
   if(!(c>0&&l>0&&a>0)){window.caixaSim=null;window.caixaRes={erro:"Informe comprimento, largura e altura da caixa, em cm."};_mostrarCaixaRes();return;}
+  if(!(e>0)){window.caixaSim=null;window.caixaRes={erro:"Informe a espessura do papelão, em mm."};_mostrarCaixaRes();return;}
+  if(2*e/1000>=Math.min(c,l,a)/100){window.caixaSim=null;window.caixaRes={erro:"A espessura é grande demais para essas dimensões da caixa."};_mostrarCaixaRes();return;}
   if(!window.lastP){window.caixaRes={erro:"Monte um pallet antes de simular."};_mostrarCaixaRes();return;}
-  window.caixaSim={c:c,l:l,a:a,sent:document.getElementById("cx-sent").value,alt:document.getElementById("cx-alt").checked,fruta:document.getElementById("cx-fruta").value};
+  window.caixaSim={c:c,l:l,a:a,e:e,sent:document.getElementById("cx-sent").value,alt:document.getElementById("cx-alt").checked,fruta:document.getElementById("cx-fruta").value};
   buildPallet(window.lastP);
 }
 function limparCaixas(){
