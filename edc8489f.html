@@ -1053,30 +1053,40 @@ window.caixaSim=null; window.caixaRes=null;
 var CX_KRAFT=0xc39a63, CX_NCAMADAS=6;
 // Folgas: 0,5 cm entre caixas na mesma camada; 2 mm entre camadas (valores simbólicos, para leitura das divisórias)
 var CX_GAP_H=0.005, CX_GAP_V=0.002;
-// Caixa aberta em papelão, com cavidades: no meio das paredes longas (topo rebaixado)
-// e nas paredes curtas (alça central, com a parte superior da parede acima da alça).
+// Parede com 4 fileiras de cavidades vazadas (aberturas passantes), alinhadas
+// entre paredes opostas, para que se enxergue através da caixa.
+// Geometria em cache: caixas de mesmo tamanho reutilizam a mesma malha.
+var CX_GEO={};
+function _cxGeoParede(L,H,t){
+  var key=L.toFixed(4)+"|"+H.toFixed(4)+"|"+t.toFixed(4);
+  if(CX_GEO[key])return CX_GEO[key];
+  var sh=new THREE.Shape();
+  sh.moveTo(-L/2,0); sh.lineTo(L/2,0); sh.lineTo(L/2,H); sh.lineTo(-L/2,H); sh.lineTo(-L/2,0);
+  var R=4, pY=H/R, hh=pY*0.5, pX=0.07, hw=0.04;
+  var n=Math.max(1,Math.floor((L-0.05)/pX));
+  for(var r=0;r<R;r++){
+    var yc=(r+0.5)*pY;
+    for(var i=0;i<n;i++){
+      var xc=(i-(n-1)/2)*pX, hp=new THREE.Path();
+      hp.moveTo(xc-hw/2,yc-hh/2); hp.lineTo(xc+hw/2,yc-hh/2); hp.lineTo(xc+hw/2,yc+hh/2); hp.lineTo(xc-hw/2,yc+hh/2); hp.lineTo(xc-hw/2,yc-hh/2);
+      sh.holes.push(hp);
+    }
+  }
+  var geo=new THREE.ExtrudeGeometry(sh,{depth:t,bevelEnabled:false});
+  geo.translate(0,0,-t/2);
+  CX_GEO[key]=geo;
+  return geo;
+}
+// Caixa aberta em papelão: fundo sólido e quatro paredes com cavidades vazadas.
 function caixaBandeja(W,H,D,t,x,y,z){
   var g=new THREE.Group();
   var mat=new THREE.MeshLambertMaterial({color:CX_KRAFT});
-  var pc=function(w,h,d,px,py,pz){var m=new THREE.Mesh(new THREE.BoxGeometry(w,h,d),mat);m.position.set(px,py,pz);g.add(m);return m;};
-  pc(W,t,D,0,t/2,0);
-  // paredes longas (ao longo de X): recorte central no topo
-  var rW=W*0.4, rH=H*0.25;
-  [-1,1].forEach(function(s){
-    var zc=s*(D/2-t/2);
-    pc((W-rW)/2,H,t,-(W+rW)/4,H/2,zc);
-    pc((W-rW)/2,H,t, (W+rW)/4,H/2,zc);
-    pc(rW,H-rH,t,0,(H-rH)/2,zc);
-  });
-  // paredes curtas (ao longo de Z): alça central
-  var hw=D*0.36, hh=H*0.32, hc=H*0.62, yLo=hc-hh/2, yHi=hc+hh/2;
-  [-1,1].forEach(function(s){
-    var xc=s*(W/2-t/2);
-    pc(t,H,(D-hw)/2,xc,H/2,-(D+hw)/4);
-    pc(t,H,(D-hw)/2,xc,H/2, (D+hw)/4);
-    pc(t,yLo,hw,xc,yLo/2,0);
-    pc(t,H-yHi,hw,xc,(yHi+H)/2,0);
-  });
+  var add=function(geo,px,py,pz,ry){var m=new THREE.Mesh(geo,mat);m.position.set(px,py,pz);if(ry)m.rotation.y=ry;g.add(m);};
+  add(new THREE.BoxGeometry(W,t,D),0,t/2,0);
+  add(_cxGeoParede(W,H,t), 0,0,-(D/2-t/2));
+  add(_cxGeoParede(W,H,t), 0,0, (D/2-t/2));
+  add(_cxGeoParede(D,H,t), (W/2-t/2),0,0,Math.PI/2);
+  add(_cxGeoParede(D,H,t),-(W/2-t/2),0,0,Math.PI/2);
   g.position.set(x,y,z);
   return g;
 }
