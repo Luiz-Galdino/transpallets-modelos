@@ -47,9 +47,13 @@ header h1{font-size:13px;font-weight:normal;color:#ccccee;margin-left:8px;border
 .reset-btn.ativo{background:#E9A23B;color:#1a1a1a}
 body.leitor [onclick*="salvarSobre"],body.leitor [onclick*="salvarCopia"],body.leitor [onclick*="deletarModelo"],body.leitor [onclick*="massaPregos"],body.leitor input[type=file]{display:none !important}
 body.leitor #save-bar input,body.leitor #save-bar select{pointer-events:none;opacity:.75}
-.cli-tit{display:none;position:absolute;top:10px;left:10px;background:rgba(255,255,255,.94);border:1px solid #c9d1da;border-radius:8px;padding:8px 12px;font-size:13px;color:#191963;font-weight:700;z-index:5}
+.cli-tit{display:none;position:absolute;top:10px;left:10px;background:rgba(255,255,255,.94);border:1px solid #c9d1da;border-radius:8px;padding:8px 14px;font-family:'Montserrat',Arial,sans-serif;font-size:20px;color:#191963;font-weight:800;letter-spacing:.2px;z-index:5}
 body.cliente .cli-tit{display:block}
 body.cliente .sidebar,body.cliente .cota-box,body.cliente .hint{display:none !important}
+/* Modo cliente (página do GitHub): cabeçalho com metade da altura, para caber no celular */
+body.cliente header{padding:4px 12px;gap:8px}
+body.cliente header img{height:24px !important}
+body.cliente header h1{font-size:11px;padding-left:8px}
 .leg{display:flex;flex-wrap:wrap;gap:5px;padding:5px 12px;background:white;border-top:1px solid #e8eaf6;flex-shrink:0}
 .li{display:flex;align-items:center;gap:3px;font-size:10px;color:#555}
 .ld{width:10px;height:10px;border-radius:2px;flex-shrink:0}
@@ -93,6 +97,8 @@ input[list]:focus,input[list]:hover{border-color:#3949AB;background:white}
 </style>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.8.2/jspdf.plugin.autotable.min.js"></script>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Montserrat:wght@700;800&display=swap" rel="stylesheet">
 <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcode-generator/1.4.4/qrcode.min.js"></script>
 </head>
 <body>
