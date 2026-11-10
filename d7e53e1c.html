@@ -1894,12 +1894,12 @@ async function gerarFichaPDF(){
   if(!_fichaEx(modelEmEdicao)){uiToast("Esta ficha não está disponível para este tipo de modelo (sem liga-toco).","erro");return;}
   var dl=null;
   try{dl=(window.claude&&window.claude.use)?await window.claude.use("downloads"):null;}catch(e){dl=null;}
-  if(!dl){uiToast("Não é possível salvar arquivos nesta visualização.","erro");return;}
+  var _useBlob=!dl;
   var doc=null;
   try{doc=_fichaPDF(modelEmEdicao,JsPDF,(typeof LOGO_FICHA!=="undefined")?LOGO_FICHA:null);}
   catch(e){uiToast("Não foi possível montar a ficha deste modelo.","erro");return;}
   var nome="Ficha Pallet: "+modelEmEdicao.cliente+" - "+modelEmEdicao.tamanho+" ("+modelEmEdicao.tipo+").pdf";
-  try{await dl.save({filename:nome,data:doc.output("arraybuffer")});uiToast("Ficha salva:\n"+nome);}
+  if(_useBlob){var _bl=new Blob([doc.output("arraybuffer")],{type:"application/pdf"});var _u=URL.createObjectURL(_bl);var _a=document.createElement("a");_a.href=_u;_a.download=nome;document.body.appendChild(_a);_a.click();setTimeout(function(){URL.revokeObjectURL(_u);_a.remove();},1000);uiToast("Ficha baixada:\n"+nome);return;}try{await dl.save({filename:nome,data:doc.output("arraybuffer")});uiToast("Ficha salva:\n"+nome);}
   catch(e){if(e&&e.code==="declined")return;uiToast("Não foi possível salvar a ficha.","erro");}
 }
 
